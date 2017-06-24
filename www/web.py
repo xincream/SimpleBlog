@@ -10,49 +10,73 @@ import os
 import inspect
 import functools
 from python_blog.www.util import log
-from urllib import parse
 from aiohttp import web
 
 
-def get(path):
-    """
-    decorator @get('/path')
-    :param path: 
-    :return: 
-    """
+# 生成GET、POST等请求方法的装饰器
+def request(path, *, method):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kw):
             return func(*args, **kw)
-        wrapper.__method__ = 'GET'
+        wrapper.__method__ = method
         wrapper.__route__ = path
         return wrapper
     return decorator
 
-
-def post(path):
-    """
-    decorator @post('/path')
-    :param path: 
-    :return: 
-    """
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kw):
-            return func(*args, **kw)
-        wrapper.__method__ = 'POST'
-        wrapper.__route__ = path
-        return wrapper
-    return decorator
+get = functools.partial(request, method='GET')
+post = functools.partial(request, method='POST')
+put = functools.partial(request, method='PUT')
+delete = functools.partial(request, method='DELETE')
 
 
+def get_required_kw_args(fn):
+    args = []
+    params = inspect.signature(fn).parameters
+    for name, param in params.items():
+        if param.kind == inspect.Parameter.KEYWORD_ONLY and \
+                        param.default == inspect.Parameter.empty:
+            args.append(name)
+        return tuple(args)
+
+
+def get_named_kw_args(fn):
+    args = []
+    params = inspect.signature(fn).parameters
+    for name, param in params.items():
+        if param.kind == inspect.Parameter.KEYWORD_ONLY:
+            args.append(name)
+    return tuple(args)
+
+
+def has_named_kw_args(fn):
+    params = inspect.signature(fn).parameters
+    for param in params.values():
+        if param.kind == inspect.Parameter.KEYWORD_ONLY:
+            return True
+
+
+def has_var_kw_args(fn):
+    params = inspect.signature(fn).parameters
+    for param in params.values():
+        if param.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+
+
+def has_request_arg(fn):
+    sig = inspect.signature(fn)
+    pass
+
+
+# RequestHandler目的就是从URL函数中分析其需要接收的参数，从request中获取必要的参数，
+# URL函数不一定是一个coroutine，因此我们用RequestHandler()来封装一个URL处理函数。
+# 调用URL函数，然后把结果转换为web.Response对象，这样，就完全符合aiohttp框架的要求：
 class RequestHandler(object):
     """
     处理请求
     """
-    def __init__(self, app, fn):
-        self._app = app
-        self._func = fn
+    def __init__(self, fn):
+        self._func = asyncio.async(fn)
 
     async def __call__(self, request):
         kw = {}  # 获得参数
@@ -66,25 +90,6 @@ def add_static(app):
     log('add static %s => %s' % ('/static/', path))
 
 
-def add_route(app, fn):
-    """
-    注册一个url处理函数
-    :param app: 
-    :param fn: 
-    :return: 
-    """
-    method = getattr(fn, '__method__', None)  # get or post
-    path = getattr(fn, '__route__', None)
-    print(method, path)
-    if not (method and path):
-        raise ValueError('@get or @post not defined in %s.' % str(fn))
-    if not asyncio.iscoroutinefunction(fn) and not inspect.isgeneratorfunction(fn):
-        fn = asyncio.coroutine(fn)
-    log('add route %s %s => %s(%s)' % (method, path, fn.__name__,
-                                       ', '.join(inspect.signature(fn).parameters.keys())))
-    app.router.add_route(method, path, RequestHandler(app, fn))
-
-
 def add_routes(app, module_name):
     """
     自动把模块的所有符合条件的函数注册了:
@@ -92,29 +97,21 @@ def add_routes(app, module_name):
     :param module_name: 
     :return: 
     """
-    n = module_name.rfind('.')
-    print(n)
-    if n == -1:
-        mod = __import__(module_name, globals(), locals())
-        print(mod)
-    else:
-        name = module_name[n+1:]
-        mod = getattr(__import__(module_name[:n], globals(), locals(), [name]), name)
+    try:
+        mod = __import__(module_name, fromlist=['get_submodule'])
+    except ImportError as e:
+        raise e
+    # 遍历mod的方法和属性,主要是找处理方法
+    # 定义的处理方法，被@get或@post修饰过，所以方法里会有'__method__'和'__route__'属性
     for attr in dir(mod):
         print(attr)
-        if attr.startswith('_'):
+        if attr.startswith('_'):  # 定义的处理方法不是以'_'开头的
             continue
         fn = getattr(mod, attr)
-
-        if callable(fn):
-            method = getattr(fn, '__method__', None)
-            path = getattr(fn, '__route__', None)
-            print(method)
-            if method and path:
-                # add_route(app, fn)
-                print(fn.__name__)
-
-
+        if callable(fn) and hasattr(fn, '__method__') and hasattr(fn, '__route__'):
+            args = ', '.join(inspect.signature(fn).parameters.keys())
+            log('add route %s %s => %s(%s)' % (fn.__method__, fn.__route__, fn.__name__, args))
+            app.router.add_route(fn.__method__, fn.__route__, RequestHandler(fn))
 
 
 @get('/test/{id}')
@@ -124,5 +121,5 @@ def get_test(id):
 
 if __name__ == '__main__':
     app_test = web.Application()
-    add_route(app_test, get_test)
+    add_routes(app_test, 'web')
 

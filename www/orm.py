@@ -174,7 +174,7 @@ class Model(dict, metaclass=ModelMetaclass):
             warn('failed to insert record: affected rows: %s' % rows)
 
     async def update(self):  # 根据主键更新
-        args = list(map(self.getValue, self.__fields__))
+        args = list(map(self.get_value, self.__fields__))
         args.append(self.get_value(self.__primary_key__))
         rows = await execute(self.__update__, args)
         if rows != 1:
