@@ -4,6 +4,7 @@
 
 # @author: xincream
 
+from python_blog.www.util import log
 
 import time
 from datetime import datetime
@@ -15,6 +16,7 @@ def datetime_filter(t):
     :param t: 
     :return: 
     """
+    log('inside datetime filters...')
     delta = int(time.time() - t)
     if delta < 60:
         return u'1分钟前'
@@ -26,3 +28,4 @@ def datetime_filter(t):
         return u'%s天前' % (delta // 86400)
     dt = datetime.fromtimestamp(t)
     return u'%s年%s月%s日' % (dt.year, dt.month, dt.day)
+

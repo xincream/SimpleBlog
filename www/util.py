@@ -22,10 +22,10 @@ async def create_pool(loop_str, **kw):
         password=kw['password'],
         db=kw['db'],
         charset=kw.get('charset', 'utf8'),
-        autocommit=kw.get('autocommit', True),
+        autocommit=kw.get('autocommit', True),  # 默认自动提交事务
         maxsize=kw.get('maxsize', 15),
         minsize=kw.get('minsize', 1),
-        loop=loop_str
+        loop=loop_str  # 传递消息循环对象loop，用于异步执行
     )
     print(pool)
 
@@ -86,6 +86,10 @@ def debug(strng):
 
 def warn(strng):
     logging.warning(strng)
+
+
+def exception(strng):
+    logging.exception(strng)
 
 
 def create_args_string(num):

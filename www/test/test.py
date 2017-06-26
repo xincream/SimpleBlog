@@ -33,5 +33,4 @@ if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     # 执行coroutine
     loop.run_until_complete(test2(loop))
-    loop.close()
 

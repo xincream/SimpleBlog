@@ -7,54 +7,25 @@
 
 from python_blog.www.util import log, debug, warn, create_args_string
 from python_blog.www.util import select, execute
-
-
-class Field(object):
-
-    def __init__(self, name, column_type, primary_key, default):
-        self.name = name
-        self.column_type = column_type
-        self.primary_key = primary_key
-        self.default = default
-
-    def __str__(self):
-        return '<%s, %s:%s>' % (self.__class__.__name__, self.column_type, self.name)
-
-
-class StringField(Field):
-
-    def __init__(self, name=None, primary_key=False, default=None, ddl='varchar(100)'):
-        super().__init__(name, ddl, primary_key, default)
-
-
-class IntegerField(Field):
-
-    def __init__(self, name=None, primary_key=False, default=0):
-        super().__init__(name, 'bigint', primary_key, default)
-
-
-class FloatField(Field):
-
-    def __init__(self, name=None, primary_key=False, default=0.0):
-        super().__init__(name, 'real', primary_key, default)
-
-
-class BooleanField(Field):
-
-    def __init__(self, name=None, default=False):
-        super().__init__(name, 'boolean', False,  default)
-
-
-class TextField(Field):
-
-    def __init__(self, name=None, default=None):
-        super().__init__(name, 'text', False, default)
+from python_blog.www.field import Field
 
 
 class ModelMetaclass(type):
-
+    """
+    任何继承自Model的类，都会自动通过ModelMetaclass扫描映射关系，并存储到自身的类属性
+    """
     def __new__(cls, name, bases, attrs):
-        # 排除Model类本身:
+        """
+        cls: 当前准备创建的类对象,相当于self
+        name: 类名,比如User继承自Model,当使用该元类创建User类时,name=User
+        bases: 父类的元组
+        attrs: 属性(方法)的字典,比如User有__table__,id,等,就作为attrs的keys
+        :param name: 
+        :param bases: 
+        :param attrs: 
+        :return: 
+        """
+        # 排除Model类本身: 因为Model类主要就是用来被继承的,其不存在与数据库表的映射
         if name == 'Model':
             return type.__new__(cls, name, bases, attrs)
         # 获取table名称:
@@ -82,7 +53,7 @@ class ModelMetaclass(type):
         attrs['__mappings__'] = mapping  # 属性和列的映射关系
         attrs['__table__'] = table_name
         attrs['__primary_key__'] = primary_key
-        attrs['__fields__'] = fields
+        attrs['__fields__'] = fields  # 将所有属性名都添加进__fields__属性
         # 构造默认的SELECT, INSERT, UPDATE和DELETE语句
         attrs['__select__'] = 'SELECT %s, %s FROM %s' % (primary_key, ', '.join(fields), table_name)
         attrs['__insert__'] = 'INSERT INTO %s (%s, %s) VALUES(%s)' % \
@@ -97,7 +68,9 @@ class ModelMetaclass(type):
 
 
 class Model(dict, metaclass=ModelMetaclass):
-
+    """
+    ORM映射基类，继承自dict，通过ModelMetaclass元类来构造类
+    """
     def __init__(self, **kw):
         super(Model, self).__init__(**kw)
 

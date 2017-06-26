@@ -13,6 +13,11 @@ configs = {
         'user': 'root',
         'password': '666666',
         'db': 'blog'
-    }
+    },
+    'session': {
+        'secret': 'AwEsOmE'
+    },
+    'COOKIE_NAME': 'xincream_session',
+    'COOKIE_KEY': 'configs.session.secret'
 }
 

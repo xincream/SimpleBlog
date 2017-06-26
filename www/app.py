@@ -5,7 +5,7 @@
 from python_blog.www.util import *
 from python_blog.www.config import *
 from python_blog.www.web import add_routes, add_static
-from python_blog.www.factory import logger_factory, response_factory
+from python_blog.www.factory import logger_factory, response_factory, data_factory, auth_factory
 from python_blog.www.filter import datetime_filter
 
 import asyncio
@@ -25,10 +25,12 @@ def index(request):
 # @asyncio.coroutine  # async 替代 @asyncio.coroutine装饰器,代表这个是要异步运行的函数
 async def init(loop_str):
     await create_pool(loop_str, **configs['db_config'])
-    app = web.Application(loop=loop_str, middlewares=[logger_factory, response_factory])
+    app = web.Application(
+        loop=loop_str, middlewares=[logger_factory, data_factory, response_factory, auth_factory]
+    )
     init_jinja2(app, filters=dict(datetime=datetime_filter))
     app.router.add_route('GET', '/', index)
-    add_routes(app, 'handlers')    # 把handlers模块的所有符合条件的函数注册了
+    add_routes(app, 'route')    # 把route模块的所有符合条件的函数注册了
     add_static(app)
     # srv = yield from loop_str.create_server(app.make_handler(), '127.0.0.1', 9000)
     # await 代替yield from ,表示要放入asyncio.get_event_loop中进行的异步操作

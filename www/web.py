@@ -4,12 +4,13 @@
 
 # @author: xincream
 
+from python_blog.www.util import log
+from python_blog.www.error import *
 
 import asyncio
 import os
 import inspect
 import functools
-from python_blog.www.util import log
 from aiohttp import web
 
 
@@ -30,58 +31,49 @@ put = functools.partial(request, method='PUT')
 delete = functools.partial(request, method='DELETE')
 
 
-def get_required_kw_args(fn):
-    args = []
-    params = inspect.signature(fn).parameters
-    for name, param in params.items():
-        if param.kind == inspect.Parameter.KEYWORD_ONLY and \
-                        param.default == inspect.Parameter.empty:
-            args.append(name)
-        return tuple(args)
-
-
-def get_named_kw_args(fn):
-    args = []
-    params = inspect.signature(fn).parameters
-    for name, param in params.items():
-        if param.kind == inspect.Parameter.KEYWORD_ONLY:
-            args.append(name)
-    return tuple(args)
-
-
-def has_named_kw_args(fn):
-    params = inspect.signature(fn).parameters
-    for param in params.values():
-        if param.kind == inspect.Parameter.KEYWORD_ONLY:
-            return True
-
-
-def has_var_kw_args(fn):
-    params = inspect.signature(fn).parameters
-    for param in params.values():
-        if param.kind == inspect.Parameter.VAR_KEYWORD:
-            return True
-
-
-def has_request_arg(fn):
-    sig = inspect.signature(fn)
-    pass
-
-
 # RequestHandler目的就是从URL函数中分析其需要接收的参数，从request中获取必要的参数，
 # URL函数不一定是一个coroutine，因此我们用RequestHandler()来封装一个URL处理函数。
 # 调用URL函数，然后把结果转换为web.Response对象，这样，就完全符合aiohttp框架的要求：
 class RequestHandler(object):
     """
-    处理请求
+    处理请求,统一标准化接口,构成标准的app.router.add_route第三个参数
+    RequestHandler把任何参数都变成self._func(**kw)的形式(获取不同的函数的对应的参数)
     """
     def __init__(self, fn):
-        self._func = asyncio.async(fn)
+        self._func = asyncio.coroutine(fn)
 
     async def __call__(self, request):
-        kw = {}  # 获得参数
-        r = await self._func(**kw)
-        return r
+        """
+        定义__call__()方法，使得可以直接对实例进行调用
+        :param request: 
+        :return: 
+        """
+        log('RequestHandler.__call__ ...')
+        args = inspect.signature(self._func).parameters  # 函数的参数表
+        log('args: %s' % args)
+        # 获取从GET或POST传进来的参数值，如果函数参数表有这参数名就加入
+        kw = {arg: value for arg, value in request.__data__.items() if arg in args}
+        # 获取match_info的参数值，例如@get('/blog/{id}')之类的参数值
+        kw.update(request.match_info)
+        # 如果有request参数的话也加入
+        if 'request' in args:
+            kw['request'] = request
+            # 检查参数表中有没参数缺失
+        for key, arg in args.items():
+                # request参数不能为可变长参数
+            if key == 'request' and arg.kind in (arg.VAR_POSITIONAL, arg.VAR_KEYWORD):
+                return web.HTTPBadRequest(text='request parameter cannot be the var argument.')
+                # 如果参数类型不是变长列表和变长字典，变长参数是可缺省的
+            if arg.kind not in (arg.VAR_POSITIONAL, arg.VAR_KEYWORD):
+                    # 如果还是没有默认值，而且还没有传值的话就报错
+                if arg.default == arg.empty and arg.name not in kw:
+                    return web.HTTPBadRequest(text='Missing argument: %s' % arg.name)
+
+        log('call with args: %s' % kw)
+        try:
+            return await self._func(**kw)
+        except APIError as e:
+            return dict(error=e.error, data=e.data, message=e.message)
 
 
 def add_static(app):
@@ -113,13 +105,4 @@ def add_routes(app, module_name):
             log('add route %s %s => %s(%s)' % (fn.__method__, fn.__route__, fn.__name__, args))
             app.router.add_route(fn.__method__, fn.__route__, RequestHandler(fn))
 
-
-@get('/test/{id}')
-def get_test(id):
-    print('test')
-
-
-if __name__ == '__main__':
-    app_test = web.Application()
-    add_routes(app_test, 'web')
 
